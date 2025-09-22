@@ -1,6 +1,11 @@
 """
 Activation Patching Module
 
+* Activation patching refers to the technique of intervening in the activations of a neural network
+to understand the role of specific components in the network's behavior.
+* While activation itself means the output of a neuron or layer after applying an activation function,
+activation patching involves replacing or modifying these activations during inference to observe their impact on the model's behavior.
+
 This module implements activation patching techniques to isolate and analyze
 the components of the greater than circuit in GPT-2 Small.
 

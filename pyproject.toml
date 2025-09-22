@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "greater-than-circuit"
 version = "1.0.0"
 description = "Reverse engineering the greater than circuit in GPT-2 Small using mechanistic interpretability"
-authors = [{name = "Research Team", email = "contact@example.com"}]
+authors = [{name = "Ashioya Jotham Victor", email = "victorashioya960@gmail.com"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8"
@@ -40,7 +40,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/username/greater-than-circuit"
-Documentation = "https://github.com/username/greater-than-circuit#readme"
-Repository = "https://github.com/username/greater-than-circuit.git"
-Issues = "https://github.com/username/greater-than-circuit/issues"
+Homepage = "https://github.com/ashioyajotham/greater-than-circuit"
+Documentation = "https://github.com/ashioyajotham/greater-than-circuit#readme"
+Repository = "https://github.com/ashioyajotham/greater-than-circuit.git"
+Issues = "https://github.com/ashioyajotham/greater-than-circuit/issues"
