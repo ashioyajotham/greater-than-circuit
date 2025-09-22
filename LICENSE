@@ -1,6 +1,6 @@
-MIT License
+# MIT License
 
-Copyright (c) 2025 Greater Than Circuit Research Team
+Copyright (c) 2025 Ashioya Jotham Victor
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,9 @@ ACKNOWLEDGMENTS:
 
 This project builds upon the foundational research and methodologies developed by:
 
-- Neel Nanda: For pioneering work in transformer mechanistic interpretability 
+- Neel Nanda: For pioneering work in transformer mechanistic interpretability
   and the development of the TransformerLens library
-- The TransformerLens development team: For creating tools that make this 
+- The TransformerLens development team: For creating tools that make this
   analysis possible
 - The broader mechanistic interpretability research community: For developing
   the theoretical foundations and methodologies used in this project
