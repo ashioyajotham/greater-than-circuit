@@ -17,8 +17,8 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from typing import Dict, List, Tuple, Optional, Any
 import torch
-from circuit_analysis import CircuitComponent, CircuitAnalyzer
-from activation_patching import PatchingResult
+from .circuit_analysis import CircuitComponent, CircuitAnalyzer
+from .activation_patching import PatchingResult
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,21 +38,13 @@ class CircuitVisualizer:
     
     def __init__(self, output_dir: str = "results"):
         """
-        Initialize the CircuitVisualizer.
+        Initialize the visualizer.
         
         Args:
-            output_dir (str): Directory to save visualization outputs
+            output_dir: Directory to save visualization outputs
         """
         self.output_dir = output_dir
-        self.colors = {
-            "attention": "#FF6B6B",
-            "mlp": "#4ECDC4", 
-            "residual": "#45B7D1",
-            "layernorm": "#FFA726",
-            "other": "#9575CD"
-        }
-        
-        logger.info(f"CircuitVisualizer initialized, output dir: {output_dir}")
+        logger.info(f"CircuitVisualizer initialized with output_dir: {output_dir}")
     
     def plot_patching_results(
         self,
@@ -62,103 +54,76 @@ class CircuitVisualizer:
         top_k: int = 20
     ) -> plt.Figure:
         """
-        Create a comprehensive plot of activation patching results.
+        Create a bar plot of patching results sorted by effect size.
         
         Args:
-            results (List[PatchingResult]): Patching results to plot
-            title (str): Plot title
-            save_path (str, optional): Path to save the plot
-            top_k (int): Number of top results to show
+            results: List of PatchingResult objects
+            title: Plot title
+            save_path: Path to save the figure
+            top_k: Number of top results to display
             
         Returns:
-            plt.Figure: The created figure
+            Matplotlib figure object
         """
-        # Sort results by absolute effect size
-        sorted_results = sorted(results, key=lambda x: abs(x.effect_size), reverse=True)
-        top_results = sorted_results[:top_k]
+        # Sort results by effect size
+        sorted_results = sorted(
+            results,
+            key=lambda x: abs(x.effect_size),
+            reverse=True
+        )[:top_k]
         
-        # Create figure with subplots
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-        fig.suptitle(title, fontsize=16, fontweight='bold')
+        # Extract data for plotting
+        labels = []
+        effect_sizes = []
+        colors = []
         
-        # 1. Top components bar plot
-        component_names = [self._format_component_name(r) for r in top_results]
-        effect_sizes = [r.effect_size for r in top_results]
-        colors = [self._get_component_color(r) for r in top_results]
+        for result in sorted_results:
+            # Create label
+            if result.head is not None:
+                label = f"L{result.layer}H{result.head}"
+                color = 'steelblue'
+            elif "mlp" in result.hook_name:
+                label = f"L{result.layer}_MLP"
+                color = 'coral'
+            else:
+                label = f"L{result.layer}_Resid"
+                color = 'lightgreen'
+            
+            labels.append(label)
+            effect_sizes.append(result.effect_size)
+            colors.append(color)
         
-        bars = ax1.barh(range(len(component_names)), effect_sizes, color=colors)
-        ax1.set_yticks(range(len(component_names)))
-        ax1.set_yticklabels(component_names, fontsize=8)
-        ax1.set_xlabel('Effect Size')
-        ax1.set_title(f'Top {top_k} Components by Effect Size')
-        ax1.grid(True, alpha=0.3)
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Create bar plot
+        bars = ax.barh(range(len(labels)), effect_sizes, color=colors)
+        
+        # Customize plot
+        ax.set_yticks(range(len(labels)))
+        ax.set_yticklabels(labels)
+        ax.set_xlabel('Effect Size', fontsize=12)
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.grid(axis='x', alpha=0.3)
         
         # Add value labels on bars
-        for i, (bar, value) in enumerate(zip(bars, effect_sizes)):
-            ax1.text(value + 0.001, i, f'{value:.3f}', 
-                    va='center', fontsize=8)
+        for i, (bar, val) in enumerate(zip(bars, effect_sizes)):
+            ax.text(val, i, f' {val:.3f}', va='center', fontsize=9)
         
-        # 2. Effect size distribution
-        all_effect_sizes = [abs(r.effect_size) for r in results]
-        ax2.hist(all_effect_sizes, bins=30, alpha=0.7, color='skyblue', edgecolor='black')
-        ax2.axvline(np.mean(all_effect_sizes), color='red', linestyle='--', 
-                   label=f'Mean: {np.mean(all_effect_sizes):.3f}')
-        ax2.set_xlabel('Absolute Effect Size')
-        ax2.set_ylabel('Frequency')
-        ax2.set_title('Distribution of Effect Sizes')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        
-        # 3. Layer-wise effects
-        layer_effects = {}
-        for r in results:
-            if r.layer is not None:
-                if r.layer not in layer_effects:
-                    layer_effects[r.layer] = []
-                layer_effects[r.layer].append(abs(r.effect_size))
-        
-        if layer_effects:
-            layers = sorted(layer_effects.keys())
-            avg_effects = [np.mean(layer_effects[layer]) for layer in layers]
-            max_effects = [np.max(layer_effects[layer]) for layer in layers]
-            
-            x = np.arange(len(layers))
-            width = 0.35
-            
-            ax3.bar(x - width/2, avg_effects, width, label='Average', alpha=0.8)
-            ax3.bar(x + width/2, max_effects, width, label='Maximum', alpha=0.8)
-            
-            ax3.set_xlabel('Layer')
-            ax3.set_ylabel('Effect Size')
-            ax3.set_title('Layer-wise Effect Analysis')
-            ax3.set_xticks(x)
-            ax3.set_xticklabels(layers)
-            ax3.legend()
-            ax3.grid(True, alpha=0.3)
-        
-        # 4. Position-wise effects
-        position_effects = {}
-        for r in results:
-            if r.position is not None:
-                if r.position not in position_effects:
-                    position_effects[r.position] = []
-                position_effects[r.position].append(abs(r.effect_size))
-        
-        if position_effects:
-            positions = sorted(position_effects.keys())
-            avg_pos_effects = [np.mean(position_effects[pos]) for pos in positions]
-            
-            ax4.plot(positions, avg_pos_effects, 'o-', linewidth=2, markersize=6)
-            ax4.set_xlabel('Token Position')
-            ax4.set_ylabel('Average Effect Size')
-            ax4.set_title('Position-wise Effect Analysis')
-            ax4.grid(True, alpha=0.3)
+        # Add legend
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='steelblue', label='Attention Head'),
+            Patch(facecolor='coral', label='MLP'),
+            Patch(facecolor='lightgreen', label='Residual')
+        ]
+        ax.legend(handles=legend_elements, loc='lower right')
         
         plt.tight_layout()
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            logger.info(f"Saved patching results plot to {save_path}")
+            logger.info(f"Patching results plot saved to {save_path}")
         
         return fig
     
@@ -172,105 +137,111 @@ class CircuitVisualizer:
         Create an interactive circuit diagram using Plotly.
         
         Args:
-            components (Dict[str, CircuitComponent]): Circuit components to visualize
-            title (str): Plot title
-            save_path (str, optional): Path to save the plot
+            components: Dictionary of circuit components
+            title: Diagram title
+            save_path: Path to save the HTML file
             
         Returns:
-            go.Figure: Interactive Plotly figure
+            Plotly figure object
         """
         # Organize components by layer
         layers = {}
-        for comp in components.values():
-            layer = comp.layer
-            if layer not in layers:
-                layers[layer] = []
-            layers[layer].append(comp)
+        for name, comp in components.items():
+            if comp.layer not in layers:
+                layers[comp.layer] = []
+            layers[comp.layer].append((name, comp))
         
         # Create node positions
-        node_positions = {}
-        y_spacing = 1.0
-        x_spacing = 2.0
+        node_x = []
+        node_y = []
+        node_text = []
+        node_color = []
+        node_size = []
         
-        for layer_idx, (layer_num, layer_comps) in enumerate(sorted(layers.items())):
-            x = layer_idx * x_spacing
+        layer_spacing = 2.0
+        
+        for layer_idx, (layer, comps) in enumerate(sorted(layers.items())):
+            x = layer_idx * layer_spacing
+            n_comps = len(comps)
             
-            # Arrange components vertically within layer
-            n_comps = len(layer_comps)
-            for comp_idx, comp in enumerate(layer_comps):
-                y = (comp_idx - n_comps/2) * y_spacing
-                node_positions[comp.name] = (x, y)
+            for i, (name, comp) in enumerate(comps):
+                y = (i - n_comps/2) * 0.5
+                
+                node_x.append(x)
+                node_y.append(y)
+                node_text.append(
+                    f"{name}<br>"
+                    f"Layer: {comp.layer}<br>"
+                    f"Type: {comp.component_type}<br>"
+                    f"Importance: {comp.importance_score:.3f}"
+                )
+                
+                # Color by component type
+                if comp.component_type == "attention":
+                    node_color.append('lightblue')
+                elif comp.component_type == "mlp":
+                    node_color.append('lightcoral')
+                else:
+                    node_color.append('lightgreen')
+                
+                # Size by importance
+                node_size.append(20 + comp.importance_score * 40)
         
-        # Create edges (simplified - in practice would need more sophisticated connection analysis)
-        edges = []
-        for layer_idx in range(len(layers) - 1):
-            current_layer = list(layers.values())[layer_idx]
-            next_layer = list(layers.values())[layer_idx + 1]
-            
-            for curr_comp in current_layer:
-                for next_comp in next_layer:
-                    # Add edge with weight based on importance
-                    weight = (curr_comp.importance_score + next_comp.importance_score) / 2
-                    edges.append((curr_comp.name, next_comp.name, weight))
+        # Create edges
+        edge_x = []
+        edge_y = []
         
-        # Create Plotly figure
+        for name, comp in components.items():
+            source_idx = list(components.keys()).index(name)
+            for target_name in comp.connections:
+                if target_name in components:
+                    target_idx = list(components.keys()).index(target_name)
+                    
+                    edge_x.extend([node_x[source_idx], node_x[target_idx], None])
+                    edge_y.extend([node_y[source_idx], node_y[target_idx], None])
+        
+        # Create figure
         fig = go.Figure()
         
         # Add edges
-        for source, target, weight in edges:
-            if source in node_positions and target in node_positions:
-                x0, y0 = node_positions[source]
-                x1, y1 = node_positions[target]
-                
-                fig.add_trace(go.Scatter(
-                    x=[x0, x1, None],
-                    y=[y0, y1, None],
-                    mode='lines',
-                    line=dict(width=weight*10, color='gray'),
-                    hoverinfo='skip',
-                    showlegend=False
-                ))
+        fig.add_trace(go.Scatter(
+            x=edge_x, y=edge_y,
+            mode='lines',
+            line=dict(color='gray', width=1),
+            hoverinfo='none',
+            showlegend=False
+        ))
         
         # Add nodes
-        for comp in components.values():
-            if comp.name in node_positions:
-                x, y = node_positions[comp.name]
-                color = self.colors.get(comp.component_type, self.colors["other"])
-                
-                fig.add_trace(go.Scatter(
-                    x=[x],
-                    y=[y],
-                    mode='markers+text',
-                    marker=dict(
-                        size=comp.importance_score * 100 + 10,
-                        color=color,
-                        line=dict(width=2, color='white')
-                    ),
-                    text=[comp.name],
-                    textposition="middle center",
-                    textfont=dict(size=10, color='white'),
-                    hovertemplate=f"<b>{comp.name}</b><br>" +
-                                f"Layer: {comp.layer}<br>" +
-                                f"Type: {comp.component_type}<br>" +
-                                f"Importance: {comp.importance_score:.3f}<extra></extra>",
-                    showlegend=False
-                ))
+        fig.add_trace(go.Scatter(
+            x=node_x, y=node_y,
+            mode='markers+text',
+            marker=dict(
+                size=node_size,
+                color=node_color,
+                line=dict(color='darkgray', width=2)
+            ),
+            text=[name for name in components.keys()],
+            textposition="top center",
+            hovertext=node_text,
+            hoverinfo='text',
+            showlegend=False
+        ))
         
         # Update layout
         fig.update_layout(
             title=title,
-            xaxis=dict(title="Layer", showgrid=True),
-            yaxis=dict(title="Component Position", showgrid=True),
             showlegend=False,
             hovermode='closest',
-            width=800,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, title="Layer"),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             height=600,
-            font=dict(size=12)
+            width=1000
         )
         
         if save_path:
             fig.write_html(save_path)
-            logger.info(f"Saved circuit diagram to {save_path}")
+            logger.info(f"Circuit diagram saved to {save_path}")
         
         return fig
     
@@ -282,137 +253,105 @@ class CircuitVisualizer:
         save_path: Optional[str] = None
     ) -> plt.Figure:
         """
-        Visualize attention patterns for important heads.
+        Visualize attention patterns as heatmaps.
         
         Args:
-            attention_patterns (Dict[str, torch.Tensor]): Attention patterns by head
-            token_labels (List[str]): Labels for tokens
-            title (str): Plot title
-            save_path (str, optional): Path to save the plot
+            attention_patterns: Dictionary mapping component names to attention tensors
+            token_labels: Labels for tokens in the sequence
+            title: Plot title
+            save_path: Path to save the figure
             
         Returns:
-            plt.Figure: The created figure
+            Matplotlib figure object
         """
-        n_heads = len(attention_patterns)
-        if n_heads == 0:
-            logger.warning("No attention patterns to plot")
-            return None
+        n_patterns = len(attention_patterns)
         
-        # Calculate grid dimensions
-        n_cols = min(3, n_heads)
-        n_rows = (n_heads + n_cols - 1) // n_cols
+        # Create subplots
+        fig, axes = plt.subplots(1, n_patterns, figsize=(6*n_patterns, 5))
         
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
-        if n_heads == 1:
+        if n_patterns == 1:
             axes = [axes]
-        elif n_rows == 1:
-            axes = [axes]
-        else:
-            axes = axes.flatten()
         
-        fig.suptitle(title, fontsize=16, fontweight='bold')
-        
-        for idx, (head_name, pattern) in enumerate(attention_patterns.items()):
-            if idx >= len(axes):
-                break
-            
-            ax = axes[idx]
-            
-            # Convert to numpy and handle different tensor shapes
+        for ax, (name, pattern) in zip(axes, attention_patterns.items()):
+            # Convert to numpy if tensor
             if isinstance(pattern, torch.Tensor):
-                pattern_np = pattern.detach().cpu().numpy()
-            else:
-                pattern_np = pattern
+                pattern = pattern.cpu().numpy()
             
             # Create heatmap
-            im = ax.imshow(pattern_np, cmap='Blues', aspect='auto')
+            im = ax.imshow(pattern, cmap='viridis', aspect='auto')
             
             # Set labels
-            ax.set_title(f'{head_name}', fontweight='bold')
+            ax.set_xticks(range(len(token_labels)))
+            ax.set_yticks(range(len(token_labels)))
+            ax.set_xticklabels(token_labels, rotation=45, ha='right')
+            ax.set_yticklabels(token_labels)
+            
+            ax.set_title(f'{name}', fontweight='bold')
             ax.set_xlabel('Key Position')
             ax.set_ylabel('Query Position')
             
-            # Set tick labels if provided
-            if token_labels and len(token_labels) == pattern_np.shape[0]:
-                ax.set_xticks(range(len(token_labels)))
-                ax.set_yticks(range(len(token_labels)))
-                ax.set_xticklabels(token_labels, rotation=45, ha='right')
-                ax.set_yticklabels(token_labels)
-            
             # Add colorbar
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            plt.colorbar(im, ax=ax)
         
-        # Hide empty subplots
-        for idx in range(n_heads, len(axes)):
-            axes[idx].set_visible(False)
-        
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
         plt.tight_layout()
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            logger.info(f"Saved attention patterns to {save_path}")
+            logger.info(f"Attention patterns plot saved to {save_path}")
         
         return fig
     
     def plot_layer_importance(
         self,
         layer_contributions: Dict[int, float],
-        title: str = "Layer Importance Analysis",
+        title: str = "Layer Importance",
         save_path: Optional[str] = None
     ) -> plt.Figure:
         """
-        Plot the importance of different layers in the circuit.
+        Create a bar plot showing importance of each layer.
         
         Args:
-            layer_contributions (Dict[int, float]): Layer importance scores
-            title (str): Plot title
-            save_path (str, optional): Path to save the plot
+            layer_contributions: Dictionary mapping layer numbers to importance scores
+            title: Plot title
+            save_path: Path to save the figure
             
         Returns:
-            plt.Figure: The created figure
+            Matplotlib figure object
         """
-        if not layer_contributions:
-            logger.warning("No layer contributions to plot")
-            return None
-        
+        # Sort by layer number
         layers = sorted(layer_contributions.keys())
-        contributions = [layer_contributions[layer] for layer in layers]
+        importances = [layer_contributions[l] for l in layers]
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-        fig.suptitle(title, fontsize=16, fontweight='bold')
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 6))
         
-        # Bar plot
-        bars = ax1.bar(layers, contributions, color='lightcoral', alpha=0.8, edgecolor='black')
-        ax1.set_xlabel('Layer Number')
-        ax1.set_ylabel('Average Importance Score')
-        ax1.set_title('Layer Contributions to Circuit')
-        ax1.grid(True, alpha=0.3)
+        # Create bar plot
+        bars = ax.bar(layers, importances, color='steelblue', alpha=0.7)
+        
+        # Highlight most important layers
+        max_importance = max(importances)
+        for bar, importance in zip(bars, importances):
+            if importance >= max_importance * 0.7:
+                bar.set_color('coral')
+        
+        # Customize plot
+        ax.set_xlabel('Layer Number', fontsize=12)
+        ax.set_ylabel('Importance Score', fontsize=12)
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.grid(axis='y', alpha=0.3)
         
         # Add value labels on bars
-        for bar, value in zip(bars, contributions):
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.001,
-                    f'{value:.3f}', ha='center', va='bottom', fontsize=10)
-        
-        # Cumulative plot
-        cumulative = np.cumsum(contributions) / np.sum(contributions)
-        ax2.plot(layers, cumulative, 'o-', linewidth=2, markersize=8, color='steelblue')
-        ax2.set_xlabel('Layer Number')
-        ax2.set_ylabel('Cumulative Importance (Normalized)')
-        ax2.set_title('Cumulative Circuit Importance')
-        ax2.grid(True, alpha=0.3)
-        ax2.set_ylim(0, 1)
-        
-        # Add horizontal lines for reference
-        ax2.axhline(y=0.5, color='red', linestyle='--', alpha=0.7, label='50%')
-        ax2.axhline(y=0.8, color='orange', linestyle='--', alpha=0.7, label='80%')
-        ax2.legend()
+        for layer, importance in zip(layers, importances):
+            if importance > 0.01:  # Only label significant bars
+                ax.text(layer, importance, f'{importance:.3f}', 
+                       ha='center', va='bottom', fontsize=9)
         
         plt.tight_layout()
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            logger.info(f"Saved layer importance plot to {save_path}")
+            logger.info(f"Layer importance plot saved to {save_path}")
         
         return fig
     
@@ -422,113 +361,151 @@ class CircuitVisualizer:
         save_path: Optional[str] = None
     ) -> go.Figure:
         """
-        Create an interactive summary dashboard of the circuit analysis.
+        Create an interactive dashboard summarizing circuit analysis.
         
         Args:
-            circuit_summary (Dict[str, Any]): Circuit analysis summary
-            save_path (str, optional): Path to save the dashboard
+            circuit_summary: Dictionary containing circuit summary statistics
+            save_path: Path to save the HTML file
             
         Returns:
-            go.Figure: Interactive Plotly dashboard
+            Plotly figure object
         """
         # Create subplots
         fig = make_subplots(
             rows=2, cols=2,
             subplot_titles=(
-                'Component Types Distribution',
-                'Layer Contributions',
-                'Positional Effects',
+                'Component Type Distribution',
+                'Layer Distribution',
+                'Top Components by Importance',
                 'Circuit Statistics'
             ),
-            specs=[[{"type": "pie"}, {"type": "bar"}],
-                   [{"type": "scatter"}, {"type": "table"}]]
+            specs=[
+                [{'type': 'pie'}, {'type': 'bar'}],
+                [{'type': 'bar'}, {'type': 'table'}]
+            ]
         )
         
-        # 1. Component types pie chart
-        attn_vs_mlp = circuit_summary.get('attention_vs_mlp', {})
-        labels = list(attn_vs_mlp.keys())
-        values = list(attn_vs_mlp.values())
-        
-        fig.add_trace(
-            go.Pie(labels=labels, values=values, name="Component Types"),
-            row=1, col=1
-        )
-        
-        # 2. Layer contributions bar chart
-        layer_analysis = circuit_summary.get('layer_analysis', {})
-        if layer_analysis:
-            layers = list(layer_analysis.keys())
-            contributions = list(layer_analysis.values())
+        # 1. Component type distribution (pie chart)
+        if 'component_types' in circuit_summary:
+            types = list(circuit_summary['component_types'].keys())
+            counts = list(circuit_summary['component_types'].values())
             
             fig.add_trace(
-                go.Bar(x=layers, y=contributions, name="Layer Contributions"),
+                go.Pie(labels=types, values=counts, name='Component Types'),
+                row=1, col=1
+            )
+        
+        # 2. Layer distribution (bar chart)
+        if 'layer_distribution' in circuit_summary:
+            layers = sorted(circuit_summary['layer_distribution'].keys())
+            counts = [circuit_summary['layer_distribution'][l] for l in layers]
+            
+            fig.add_trace(
+                go.Bar(x=layers, y=counts, name='Layer Distribution'),
                 row=1, col=2
             )
         
-        # 3. Positional effects scatter plot
-        pos_analysis = circuit_summary.get('positional_analysis', {})
-        if pos_analysis:
-            positions = list(pos_analysis.keys())
-            avg_effects = [data.get('avg_effect', 0) for data in pos_analysis.values()]
-            
-            fig.add_trace(
-                go.Scatter(x=positions, y=avg_effects, mode='lines+markers',
-                          name="Positional Effects"),
-                row=2, col=1
-            )
-        
-        # 4. Statistics table
-        overview = circuit_summary.get('circuit_overview', {})
+        # 3. Statistics table
         stats_data = [
-            ['Total Components', overview.get('total_components', 'N/A')],
+            ['Total Components', circuit_summary.get('total_components', 0)],
+            ['Total Importance', f"{circuit_summary.get('total_importance', 0):.3f}"],
+            ['Average Importance', f"{circuit_summary.get('average_importance', 0):.3f}"],
             ['Circuit Depth', circuit_summary.get('circuit_depth', 'N/A')],
-            ['Most Important Layer', overview.get('most_important_layer', 'N/A')],
-            ['Attention Heads', len(overview.get('attention_heads', []))],
-            ['MLP Components', len(overview.get('mlp_components', []))]
         ]
+        
+        if 'most_important_component' in circuit_summary:
+            mic = circuit_summary['most_important_component']
+            stats_data.append([
+                'Most Important',
+                f"{mic.get('name', 'N/A')} ({mic.get('importance', 0):.3f})"
+            ])
         
         fig.add_trace(
             go.Table(
                 header=dict(values=['Metric', 'Value']),
-                cells=dict(values=list(zip(*stats_data)))
+                cells=dict(values=[[row[0] for row in stats_data],
+                                  [row[1] for row in stats_data]])
             ),
             row=2, col=2
         )
         
         # Update layout
         fig.update_layout(
-            title_text="Greater Than Circuit Analysis Dashboard",
-            title_x=0.5,
+            title_text="Circuit Analysis Dashboard",
+            showlegend=False,
             height=800,
-            showlegend=False
+            width=1200
         )
         
         if save_path:
             fig.write_html(save_path)
-            logger.info(f"Saved summary dashboard to {save_path}")
+            logger.info(f"Dashboard saved to {save_path}")
         
         return fig
     
-    def _format_component_name(self, result: PatchingResult) -> str:
-        """Format component name for display."""
-        if result.head is not None:
-            return f"L{result.layer}H{result.head}"
-        elif result.layer is not None:
-            comp_type = "MLP" if "mlp" in result.hook_name else "ATN"
-            return f"L{result.layer}_{comp_type}"
-        else:
-            return result.hook_name.split('.')[-1]
-    
-    def _get_component_color(self, result: PatchingResult) -> str:
-        """Get color for component based on type."""
-        if "attn" in result.hook_name:
-            return self.colors["attention"]
-        elif "mlp" in result.hook_name:
-            return self.colors["mlp"]
-        elif "resid" in result.hook_name:
-            return self.colors["residual"]
-        else:
-            return self.colors["other"]
+    def plot_validation_results(
+        self,
+        validation_results: Dict[str, Any],
+        title: str = "Validation Results",
+        save_path: Optional[str] = None
+    ) -> plt.Figure:
+        """
+        Create a visualization of validation test results.
+        
+        Args:
+            validation_results: Dictionary of validation results
+            title: Plot title
+            save_path: Path to save the figure
+            
+        Returns:
+            Matplotlib figure object
+        """
+        # Extract test names and accuracies
+        test_names = []
+        accuracies = []
+        
+        for test_name, result in validation_results.items():
+            test_names.append(test_name.replace('_', ' ').title())
+            accuracies.append(result.accuracy)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Create bar plot
+        bars = ax.barh(range(len(test_names)), accuracies, color='steelblue', alpha=0.7)
+        
+        # Color code by performance
+        for bar, acc in zip(bars, accuracies):
+            if acc >= 0.8:
+                bar.set_color('green')
+            elif acc >= 0.6:
+                bar.set_color('orange')
+            else:
+                bar.set_color('red')
+        
+        # Customize plot
+        ax.set_yticks(range(len(test_names)))
+        ax.set_yticklabels(test_names)
+        ax.set_xlabel('Accuracy', fontsize=12)
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlim(0, 1.0)
+        ax.grid(axis='x', alpha=0.3)
+        
+        # Add value labels
+        for i, (bar, acc) in enumerate(zip(bars, accuracies)):
+            ax.text(acc, i, f' {acc:.3f}', va='center', fontsize=10)
+        
+        # Add reference line at 0.5
+        ax.axvline(x=0.5, color='gray', linestyle='--', alpha=0.5, label='Random Baseline')
+        ax.legend()
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Validation results plot saved to {save_path}")
+        
+        return fig
 
 
 def main():
@@ -537,7 +514,7 @@ def main():
     visualizer = CircuitVisualizer()
     
     # Sample patching results
-    from activation_patching import PatchingResult
+    from .activation_patching import PatchingResult
     
     sample_results = [
         PatchingResult("blocks.5.attn.hook_result", 5, 7, -1, 0.45, 0.2, 0.65, 0.45),
@@ -549,7 +526,7 @@ def main():
     fig1 = visualizer.plot_patching_results(sample_results, save_path="results/patching_results.png")
     
     # Sample circuit components
-    from circuit_analysis import CircuitComponent
+    from .circuit_analysis import CircuitComponent
     
     sample_components = {
         "L5H7": CircuitComponent("L5H7", 5, 7, 0.45, "attention"),
@@ -559,8 +536,7 @@ def main():
     
     fig2 = visualizer.plot_circuit_diagram(sample_components, save_path="results/circuit_diagram.html")
     
-    print("Visualization examples completed!")
-    plt.show()
+    print("Visualizations created successfully!")
 
 
 if __name__ == "__main__":

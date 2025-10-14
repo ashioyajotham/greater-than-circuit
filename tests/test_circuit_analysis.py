@@ -10,6 +10,11 @@ import torch
 import numpy as np
 from unittest.mock import Mock, patch
 
+# Add parent directory to path for imports
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 # Import modules to test
 from src.prompt_design import PromptGenerator, PromptExample
 from src.activation_patching import PatchingResult

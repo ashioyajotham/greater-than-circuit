@@ -16,9 +16,9 @@ from typing import Dict, List, Tuple, Optional, Any, Callable
 from dataclasses import dataclass
 import pandas as pd
 from transformer_lens import HookedTransformer
-from prompt_design import PromptGenerator, PromptExample
-from activation_patching import ActivationPatcher, PatchingResult
-from circuit_analysis import CircuitAnalyzer, CircuitComponent
+from .prompt_design import PromptGenerator, PromptExample
+from .activation_patching import ActivationPatcher, PatchingResult
+from .circuit_analysis import CircuitAnalyzer, CircuitComponent
 import logging
 
 logger = logging.getLogger(__name__)
@@ -590,7 +590,7 @@ class CircuitValidator:
 
 def main():
     """Example usage of the CircuitValidator class."""
-    from model_setup import ModelSetup
+    from .model_setup import ModelSetup
     
     # Setup components
     setup = ModelSetup()

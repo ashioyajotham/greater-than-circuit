@@ -1,28 +1,31 @@
 """
-Greater Than Circuit Reverse Engineering Package
+Greater Than Circuit Analysis Package
 
-This package implements mechanistic interpretability techniques to reverse-engineer
-the "greater than" circuit in GPT-2 Small, following methodologies from the field
-of transformer mechanistic interpretability.
+This package provides tools for reverse-engineering the "greater than" circuit
+in transformer language models using mechanistic interpretability techniques.
 
-Acknowledgment: This work builds upon the foundational research and methodologies
-developed by Neel Nanda and the broader mechanistic interpretability community.
+Based on the TransformerLens library and methodology developed by Neel Nanda.
 """
 
-__version__ = "1.0.0"
-__author__ = "Research Team"
-__email__ = "contact@example.com"
-
 from .model_setup import ModelSetup
-from .prompt_design import PromptGenerator
-from .activation_patching import ActivationPatcher
-from .circuit_analysis import CircuitAnalyzer
+from .prompt_design import PromptGenerator, PromptExample
+from .activation_patching import ActivationPatcher, PatchingResult
+from .circuit_analysis import CircuitAnalyzer, CircuitComponent
+from .circuit_validation import CircuitValidator, ValidationResult
 from .visualization import CircuitVisualizer
+
+__version__ = "0.1.0"
+__author__ = "Research Implementation"
 
 __all__ = [
     "ModelSetup",
-    "PromptGenerator", 
+    "PromptGenerator",
+    "PromptExample",
     "ActivationPatcher",
+    "PatchingResult",
     "CircuitAnalyzer",
-    "CircuitVisualizer"
+    "CircuitComponent",
+    "CircuitValidator",
+    "ValidationResult",
+    "CircuitVisualizer",
 ]
