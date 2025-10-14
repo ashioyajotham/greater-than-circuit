@@ -16,7 +16,7 @@ coverage/
 htmlcov/
 .tox/
 .nox/
-pytest_cache/
+.pytest_cache/
 .coverage
 .cache
 nosetests.xml

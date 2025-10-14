@@ -24,6 +24,52 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Metric computation functions
+def compute_logit_diff(
+    logits: torch.Tensor,
+    true_token_id: int,
+    false_token_id: int
+) -> float:
+    """
+    Compute the difference in logits between True and False tokens.
+    
+    Args:
+        logits: Model output logits [batch, seq, vocab]
+        true_token_id: Token ID for "True"
+        false_token_id: Token ID for "False"
+        
+    Returns:
+        Logit difference (True - False)
+    """
+    last_logits = logits[0, -1, :]
+    true_logit = last_logits[true_token_id].item()
+    false_logit = last_logits[false_token_id].item()
+    return true_logit - false_logit
+
+
+def compute_probability_diff(
+    logits: torch.Tensor,
+    true_token_id: int,
+    false_token_id: int
+) -> float:
+    """
+    Compute the difference in probabilities between True and False tokens.
+    
+    Args:
+        logits: Model output logits [batch, seq, vocab]
+        true_token_id: Token ID for "True"
+        false_token_id: Token ID for "False"
+        
+    Returns:
+        Probability difference (True - False)
+    """
+    last_logits = logits[0, -1, :]
+    probs = torch.softmax(last_logits, dim=-1)
+    true_prob = probs[true_token_id].item()
+    false_prob = probs[false_token_id].item()
+    return true_prob - false_prob
+
+
 @dataclass 
 class PatchingResult:
     """
@@ -67,8 +113,53 @@ class ActivationPatcher:
         self.model = model
         self.device = next(model.parameters()).device
         self.stored_activations = {}
+        self.n_layers = model.cfg.n_layers
+        self.n_heads = model.cfg.n_heads
+        
+        # Store token IDs for True/False
+        self.true_token_id = model.to_single_token(" True")
+        self.false_token_id = model.to_single_token(" False")
         
         logger.info(f"ActivationPatcher initialized for {model.cfg.model_name}")
+    
+    def get_hook_names(
+        self,
+        component_type: str = "all",
+        layers: Optional[List[int]] = None
+    ) -> List[str]:
+        """
+        Get hook names for specified component types and layers.
+        
+        Args:
+            component_type: Type of component ("attention", "mlp", "all")
+            layers: Specific layers to include (None for all layers)
+            
+        Returns:
+            List of hook names
+        """
+        if layers is None:
+            layers = list(range(self.n_layers))
+        
+        hook_names = []
+        
+        for layer in layers:
+            if component_type in ["attention", "all"]:
+                # Attention output hooks
+                hook_names.append(f"blocks.{layer}.attn.hook_result")
+                # Individual attention head hooks
+                for head in range(self.n_heads):
+                    hook_names.append(f"blocks.{layer}.attn.hook_result[{head}]")
+            
+            if component_type in ["mlp", "all"]:
+                # MLP hooks
+                hook_names.append(f"blocks.{layer}.mlp.hook_post")
+            
+            if component_type in ["residual", "all"]:
+                # Residual stream hooks
+                hook_names.append(f"blocks.{layer}.hook_resid_pre")
+                hook_names.append(f"blocks.{layer}.hook_resid_post")
+        
+        return hook_names
     
     def store_activations(
         self,
@@ -118,6 +209,7 @@ class ActivationPatcher:
         clean_tokens: torch.Tensor,
         hook_name: str,
         position: Optional[int] = None,
+        head_idx: Optional[int] = None,
         metric_fn: Optional[Callable] = None
     ) -> PatchingResult:
         """
@@ -128,6 +220,7 @@ class ActivationPatcher:
             clean_tokens (torch.Tensor): Clean input tokens  
             hook_name (str): Name of the hook to patch
             position (int, optional): Token position to patch (if None, patch all)
+            head_idx (int, optional): Specific attention head to patch
             metric_fn (Callable, optional): Function to compute metric
             
         Returns:
@@ -171,6 +264,10 @@ class ActivationPatcher:
         # Parse layer and head from hook name if applicable
         layer, head = self._parse_hook_name(hook_name)
         
+        # Override head if specified
+        if head_idx is not None:
+            head = head_idx
+        
         result = PatchingResult(
             hook_name=hook_name,
             layer=layer,
@@ -183,6 +280,165 @@ class ActivationPatcher:
         )
         
         return result
+    
+    def run_patching_experiment(
+        self,
+        clean_examples: List,
+        corrupted_examples: List,
+        hook_names: List[str],
+        positions: List[int],
+        metric_fn: Optional[Callable] = None
+    ) -> List[PatchingResult]:
+        """
+        Run patching experiments across multiple examples and hooks.
+        
+        Args:
+            clean_examples: List of clean examples
+            corrupted_examples: List of corrupted examples
+            hook_names: Hook names to patch
+            positions: Token positions to patch
+            metric_fn: Optional metric function
+            
+        Returns:
+            List of patching results
+        """
+        results = []
+        
+        for clean_ex, corrupt_ex in zip(clean_examples, corrupted_examples):
+            clean_tokens = self.model.to_tokens(clean_ex.prompt_text + " ")
+            corrupt_tokens = self.model.to_tokens(corrupt_ex.prompt_text + " ")
+            
+            for hook_name in hook_names:
+                for position in positions:
+                    try:
+                        result = self.patch_activation(
+                            corrupted_tokens=corrupt_tokens,
+                            clean_tokens=clean_tokens,
+                            hook_name=hook_name,
+                            position=position,
+                            metric_fn=metric_fn
+                        )
+                        results.append(result)
+                    except Exception as e:
+                        logger.warning(f"Failed to patch {hook_name} at {position}: {e}")
+                        continue
+        
+        logger.info(f"Completed patching experiment: {len(results)} results")
+        return results
+    
+    def run_comprehensive_patching(
+        self,
+        clean_examples: List,
+        corrupted_examples: List,
+        component_types: List[str] = ["attention"],
+        layers: Optional[List[int]] = None,
+        positions: List[int] = [-1]
+    ) -> List[PatchingResult]:
+        """
+        Run comprehensive patching across components.
+        
+        Args:
+            clean_examples: Clean examples
+            corrupted_examples: Corrupted examples
+            component_types: Types of components to patch
+            layers: Specific layers (None for all)
+            positions: Token positions to patch
+            
+        Returns:
+            List of patching results
+        """
+        results = []
+        
+        for comp_type in component_types:
+            hook_names = self.get_hook_names(component_type=comp_type, layers=layers)
+            comp_results = self.run_patching_experiment(
+                clean_examples=clean_examples,
+                corrupted_examples=corrupted_examples,
+                hook_names=hook_names,
+                positions=positions
+            )
+            results.extend(comp_results)
+        
+        return results
+    
+    def get_top_components(
+        self,
+        results: List[PatchingResult],
+        top_k: int = 10
+    ) -> List[PatchingResult]:
+        """
+        Get top k components by effect size.
+        
+        Args:
+            results: Patching results
+            top_k: Number of top components to return
+            
+        Returns:
+            Top k results sorted by effect size
+        """
+        sorted_results = sorted(
+            results,
+            key=lambda x: abs(x.effect_size),
+            reverse=True
+        )
+        return sorted_results[:top_k]
+    
+    def filter_by_threshold(
+        self,
+        results: List[PatchingResult],
+        threshold: float = 0.1
+    ) -> List[PatchingResult]:
+        """
+        Filter results by minimum effect size threshold.
+        
+        Args:
+            results: Patching results
+            threshold: Minimum effect size
+            
+        Returns:
+            Filtered results
+        """
+        return [r for r in results if abs(r.effect_size) >= threshold]
+    
+    def summarize_results_by_layer(
+        self,
+        results: List[PatchingResult]
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Summarize patching results by layer.
+        
+        Args:
+            results: Patching results
+            
+        Returns:
+            Dictionary mapping layer numbers to summary statistics
+        """
+        layer_summary = {}
+        
+        for result in results:
+            if result.layer is None:
+                continue
+            
+            if result.layer not in layer_summary:
+                layer_summary[result.layer] = {
+                    'max_effect': 0.0,
+                    'mean_effect': [],
+                    'count': 0
+                }
+            
+            layer_summary[result.layer]['max_effect'] = max(
+                layer_summary[result.layer]['max_effect'],
+                abs(result.effect_size)
+            )
+            layer_summary[result.layer]['mean_effect'].append(abs(result.effect_size))
+            layer_summary[result.layer]['count'] += 1
+        
+        # Calculate means
+        for layer in layer_summary:
+            effects = layer_summary[layer]['mean_effect']
+            layer_summary[layer]['mean_effect'] = np.mean(effects) if effects else 0.0
+        
+        return layer_summary
     
     def comprehensive_patching(
         self,
@@ -340,12 +596,8 @@ class ActivationPatcher:
         # Get probabilities
         probs = torch.softmax(last_logits, dim=-1)
         
-        # Find tokens for "True" and "False"
-        true_token = self.model.to_single_token(" True")
-        false_token = self.model.to_single_token(" False")
-        
         # Return probability of "True" token (assuming that's what we want)
-        return probs[true_token].item()
+        return probs[self.true_token_id].item()
     
     def _get_hook_names(self, component_types: List[str]) -> List[str]:
         """Get hook names for specified component types."""
@@ -469,8 +721,8 @@ class ActivationPatcher:
 
 def main():
     """Example usage of the ActivationPatcher class."""
-    from model_setup import ModelSetup
-    from prompt_design import PromptGenerator
+    from .model_setup import ModelSetup
+    from .prompt_design import PromptGenerator
     
     # Setup model
     setup = ModelSetup()
@@ -478,41 +730,28 @@ def main():
     
     # Create prompt examples
     generator = PromptGenerator(seed=42)
-    pairs = generator.create_prompt_pairs(n_pairs=5)
-    
-    # Get clean and corrupted examples
-    clean_example, corrupted_example = pairs[0]
-    
-    # Tokenize
-    clean_tokens = model.to_tokens(clean_example.prompt_text)
-    corrupted_tokens = model.to_tokens(corrupted_example.prompt_text)
+    clean_examples = generator.generate_basic_examples(n_examples=5)
+    corrupted_examples = generator.generate_corrupted_examples(clean_examples, "flip_answer")
     
     # Initialize patcher
     patcher = ActivationPatcher(model)
     
-    # Test single patch
-    result = patcher.patch_activation(
-        corrupted_tokens=corrupted_tokens,
-        clean_tokens=clean_tokens,
-        hook_name="blocks.0.attn.hook_result",
-        position=-1  # Last token position
+    # Run patching experiment
+    results = patcher.run_patching_experiment(
+        clean_examples=clean_examples,
+        corrupted_examples=corrupted_examples,
+        hook_names=["blocks.5.attn.hook_result"],
+        positions=[-1]
     )
     
-    print(f"Patching result: {result.hook_name} -> {result.effect_size:.3f}")
+    print(f"\nRan {len(results)} patching experiments")
     
-    # Test attention head patching
-    head_results = patcher.patch_attention_heads(
-        corrupted_tokens=corrupted_tokens,
-        clean_tokens=clean_tokens,
-        positions=[-1]  # Only last position
-    )
+    # Get top components
+    top_components = patcher.get_top_components(results, top_k=5)
     
-    # Find critical components
-    critical = patcher.find_critical_components(head_results, threshold=0.05, top_k=5)
-    
-    print(f"\nTop {len(critical)} critical attention heads:")
-    for result in critical:
-        print(f"  Layer {result.layer}, Head {result.head}: {result.effect_size:.3f}")
+    print(f"\nTop {len(top_components)} components:")
+    for result in top_components:
+        print(f"  {result.hook_name}: {result.effect_size:.3f}")
 
 
 if __name__ == "__main__":

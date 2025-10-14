@@ -20,25 +20,31 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PromptExample:
     """
-    Data class representing a single prompt example for greater than testing.
+    Data class representing a single prompt example for the greater than task.
     
     Attributes:
         num1 (int): First number in the comparison
-        num2 (int): Second number in the comparison  
-        correct_answer (bool): Whether num1 > num2
-        prompt_text (str): The formatted prompt string
-        answer_text (str): The expected answer ("True" or "False")
+        num2 (int): Second number in the comparison
+        correct_answer (bool): True if num1 > num2, False otherwise
+        prompt_text (str): The formatted prompt text
+        answer_text (str): The text answer ("True" or "False")
+        is_corrupted (bool): Whether this is a corrupted example (for patching)
     """
     num1: int
     num2: int
     correct_answer: bool
     prompt_text: str
     answer_text: str
+    is_corrupted: bool = False
     
     def __post_init__(self):
         """Validate the example after initialization."""
-        assert (self.num1 > self.num2) == self.correct_answer, \
-            f"Inconsistent example: {self.num1} > {self.num2} = {self.correct_answer}"
+        # Only validate non-corrupted examples
+        if not self.is_corrupted:
+            assert (self.num1 > self.num2) == self.correct_answer, \
+                f"Inconsistent example: {self.num1} > {self.num2} = {self.correct_answer}"
+            assert self.answer_text in ["True", "False"], \
+                f"Invalid answer text: {self.answer_text}"
 
 
 class PromptGenerator:
@@ -234,49 +240,73 @@ class PromptGenerator:
         corruption_type: str = "flip_answer"
     ) -> List[PromptExample]:
         """
-        Generate corrupted versions of clean examples for activation patching.
+        Generate corrupted versions of clean examples.
+        
+        Corrupted examples are used in activation patching experiments to
+        create counterfactual comparisons.
         
         Args:
-            clean_examples (List[PromptExample]): Clean examples to corrupt
-            corruption_type (str): Type of corruption to apply
-            
+            clean_examples: List of clean examples to corrupt
+            corruption_type: Type of corruption to apply
+                - "flip_answer": Flip the correct answer
+                - "swap_numbers": Swap num1 and num2
+                - "random_numbers": Replace with random numbers
+                
         Returns:
-            List[PromptExample]: Corrupted examples
+            List of corrupted PromptExample objects
         """
         corrupted = []
         
         for example in clean_examples:
             if corruption_type == "flip_answer":
-                # Keep the same prompt but flip the expected answer
+                # Flip the answer while keeping the prompt the same
+                corrupted_answer = not example.correct_answer
+                corrupted_answer_text = "True" if corrupted_answer else "False"
+                
                 corrupted_example = PromptExample(
                     num1=example.num1,
                     num2=example.num2,
-                    correct_answer=not example.correct_answer,
+                    correct_answer=corrupted_answer,
                     prompt_text=example.prompt_text,
-                    answer_text="False" if example.answer_text == "True" else "True"
-                )
-            elif corruption_type == "swap_numbers":
-                # Swap the numbers in the prompt
-                corrupted_prompt = example.prompt_text.replace(
-                    str(example.num1), "TEMP"
-                ).replace(
-                    str(example.num2), str(example.num1)
-                ).replace(
-                    "TEMP", str(example.num2)
+                    answer_text=corrupted_answer_text,
+                    is_corrupted=True  # Mark as corrupted
                 )
                 
+            elif corruption_type == "swap_numbers":
+                # Swap the numbers
                 corrupted_example = PromptExample(
-                    num1=example.num2,  # Swapped
-                    num2=example.num1,  # Swapped
-                    correct_answer=example.num2 > example.num1,
-                    prompt_text=corrupted_prompt,
-                    answer_text="True" if example.num2 > example.num1 else "False"
+                    num1=example.num2,
+                    num2=example.num1,
+                    correct_answer=(example.num2 > example.num1),
+                    prompt_text=f"{example.num2} > {example.num1}",
+                    answer_text="True" if (example.num2 > example.num1) else "False",
+                    is_corrupted=False  # This is consistent, so not corrupted
                 )
+                
+            elif corruption_type == "random_numbers":
+                # Replace with random numbers
+                num1 = self.rng.integers(1, 100)
+                num2 = self.rng.integers(1, 100)
+                while num1 == num2:
+                    num2 = self.rng.integers(1, 100)
+                
+                correct_answer = num1 > num2
+                answer_text = "True" if correct_answer else "False"
+                
+                corrupted_example = PromptExample(
+                    num1=num1,
+                    num2=num2,
+                    correct_answer=correct_answer,
+                    prompt_text=f"{num1} > {num2}",
+                    answer_text=answer_text,
+                    is_corrupted=False  # This is consistent, so not corrupted
+                )
+                
             else:
                 raise ValueError(f"Unknown corruption type: {corruption_type}")
-            
-            corrupted.append(corrupted_example)
         
+            corrupted.append(corrupted_example)
+    
         logger.info(f"Generated {len(corrupted)} corrupted examples using {corruption_type}")
         return corrupted
     

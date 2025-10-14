@@ -4,43 +4,78 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "greater-than-circuit"
-version = "1.0.0"
-description = "Reverse engineering the greater than circuit in GPT-2 Small using mechanistic interpretability"
-authors = [{name = "Ashioya Jotham Victor", email = "victorashioya960@gmail.com"}]
-license = {text = "MIT"}
+version = "0.1.0"
+description = "Mechanistic interpretability analysis of GPT-2's greater-than comparison circuit"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
 readme = "README.md"
 requires-python = ">=3.8"
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-]
 dependencies = [
-    "transformer-lens>=1.12.0",
     "torch>=2.0.0",
+    "transformer-lens>=1.0.0",
     "numpy>=1.24.0",
     "matplotlib>=3.7.0",
     "plotly>=5.14.0",
     "pandas>=2.0.0",
     "tqdm>=4.65.0",
+    "wandb>=0.15.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.3.0",
+    "pytest-cov>=4.1.0",
     "black>=23.3.0",
+    "isort>=5.12.0",
     "flake8>=6.0.0",
-    "jupyter>=1.0.0",
+    "mypy>=1.3.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/ashioyajotham/greater-than-circuit"
-Documentation = "https://github.com/ashioyajotham/greater-than-circuit#readme"
-Repository = "https://github.com/ashioyajotham/greater-than-circuit.git"
-Issues = "https://github.com/ashioyajotham/greater-than-circuit/issues"
+[tool.pytest.ini_options]
+# Test discovery
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Logging - only show on failure
+log_cli = false
+log_cli_level = "CRITICAL"
+log_file_level = "INFO"
+
+# Output configuration
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+    "-p", "no:logging",  # Disable logging plugin output
+]
+
+# Filter warnings
+filterwarnings = [
+    "ignore::pytest.PytestAssertRewriteWarning",
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+# Markers
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
