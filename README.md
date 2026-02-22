@@ -34,6 +34,8 @@ Pre-trained language models exhibit mathematical capabilities they were never ex
 2. **Generalizable algorithms** learned implicitly?
 3. **Something in between**—task-specific heuristics that work in narrow contexts?
 
+> **Note on GPT-2's arithmetic abilities**: GPT-2 Small is *not* a competent calculator. It fails at most arithmetic tasks—multi-digit addition, multiplication, even basic subtraction. The greater-than task was specifically chosen because it is one of the few numerical operations GPT-2 can reliably perform, making it tractable for circuit analysis. This limitation is a feature, not a bug: if the model could do everything, we couldn't isolate specific mechanisms.
+
 Prior work in mechanistic interpretability has largely focused on toy models (modular addition, group composition) or simpler tasks (indirect object identification). Mathematical reasoning in *pre-trained* models remained unexplored.
 
 ### The Hanna et al. Contribution
@@ -157,24 +159,24 @@ Components with high effect scores are causally important for the task.
 ```mermaid
 flowchart TB
     subgraph Input
-        T[Token: "32"]
+        T["Token '32'"]
     end
     
-    subgraph "Information Extraction"
-        A7[Attention L7]
-        A8[Attention L8]
-        A9[Attention L9]
+    subgraph Extraction["Information Extraction"]
+        A7["Attention L7"]
+        A8["Attention L8"]
+        A9["Attention L9"]
     end
     
-    subgraph "Greater-Than Computation"
-        M8[MLP 8<br/>41.9%]
-        M9[MLP 9<br/>65.7%]
-        M10[MLP 10<br/>67.8%]
+    subgraph Compute["Greater-Than Computation"]
+        M8["MLP 8 - 41.9%"]
+        M9["MLP 9 - 65.7%"]
+        M10["MLP 10 - 67.8%"]
     end
     
-    subgraph "Output"
-        M11[MLP 11<br/>20.2%]
-        L[Logits]
+    subgraph Out["Output"]
+        M11["MLP 11 - 20.2%"]
+        L["Logits"]
     end
     
     T --> A7 --> A8 --> A9
