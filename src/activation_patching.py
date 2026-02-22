@@ -178,25 +178,18 @@ class ActivationPatcher:
         """
         stored_acts = {}
         
-        def store_hook(activation: torch.Tensor, hook_name: str):
-            stored_acts[hook_name] = activation.clone().detach()
+        def make_store_hook(name: str):
+            def store_hook(activation: torch.Tensor, hook):
+                stored_acts[name] = activation.clone().detach()
+                return activation
+            return store_hook
         
-        # Add hooks to store activations
-        hooks = []
-        for hook_name in hook_names:
-            hook = self.model.add_hook(
-                hook_name,
-                lambda act, hook=hook_name: store_hook(act, hook)
-            )
-            hooks.append(hook)
+        # Build hooks list for run_with_hooks
+        fwd_hooks = [(name, make_store_hook(name)) for name in hook_names]
         
-        # Run forward pass
+        # Run forward pass with hooks
         with torch.no_grad():
-            self.model(tokens)
-        
-        # Remove hooks
-        for hook in hooks:
-            hook.remove()
+            self.model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
         
         self.stored_activations.update(stored_acts)
         logger.info(f"Stored activations for {len(hook_names)} hooks")
@@ -239,7 +232,7 @@ class ActivationPatcher:
             original_metric = metric_fn(original_logits, corrupted_tokens)
         
         # Define patching hook
-        def patching_hook(activation: torch.Tensor, hook_name: str = hook_name):
+        def patching_hook(activation: torch.Tensor, hook):
             if position is not None:
                 # Patch specific position
                 activation[:, position, :] = clean_activation[:, position, :].to(activation.device)
@@ -248,14 +241,13 @@ class ActivationPatcher:
                 activation[:] = clean_activation.to(activation.device)
             return activation
         
-        # Apply patch and measure effect
-        hook = self.model.add_hook(hook_name, patching_hook)
-        
+        # Apply patch and measure effect using run_with_hooks
         with torch.no_grad():
-            patched_logits = self.model(corrupted_tokens)
+            patched_logits = self.model.run_with_hooks(
+                corrupted_tokens,
+                fwd_hooks=[(hook_name, patching_hook)]
+            )
             patched_metric = metric_fn(patched_logits, corrupted_tokens)
-        
-        hook.remove()
         
         # Calculate effect metrics
         metric_diff = patched_metric - original_metric
@@ -549,6 +541,53 @@ class ActivationPatcher:
         
         return results
     
+    def patch_mlp_layers(
+        self,
+        corrupted_tokens: torch.Tensor,
+        clean_tokens: torch.Tensor,
+        positions: List[int] = [-1],
+        metric_fn: Optional[Callable] = None
+    ) -> List[PatchingResult]:
+        """
+        Patch MLP outputs across all layers and measure effects.
+        
+        This is crucial for the greater-than circuit as Hanna et al. found
+        that MLPs 9 and 10 are particularly important.
+        
+        Args:
+            corrupted_tokens: Tokenized corrupted input
+            clean_tokens: Tokenized clean input
+            positions: Positions to patch (default: last position)
+            metric_fn: Metric function to use
+            
+        Returns:
+            List of patching results for each MLP layer
+        """
+        results = []
+        logger.info(f"Patching MLP layers across {self.model.cfg.n_layers} layers")
+        
+        for layer in range(self.model.cfg.n_layers):
+            hook_name = get_act_name("mlp_out", layer)
+            
+            for position in positions:
+                try:
+                    result = self.patch_activation(
+                        corrupted_tokens=corrupted_tokens,
+                        clean_tokens=clean_tokens,
+                        hook_name=hook_name,
+                        position=position,
+                        metric_fn=metric_fn
+                    )
+                    result.layer = layer
+                    result.head = None  # MLPs don't have heads
+                    results.append(result)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to patch MLP {layer} at position {position}: {e}")
+                    continue
+        
+        return results
+    
     def find_critical_components(
         self,
         results: List[PatchingResult],
@@ -581,23 +620,46 @@ class ActivationPatcher:
     
     def _default_metric_fn(self, logits: torch.Tensor, tokens: torch.Tensor) -> float:
         """
-        Default metric function: probability of correct answer.
+        Default metric function: logit difference for number comparison.
+        
+        Uses the top logit as a general measure of model confidence.
+        For number comparison tasks, this captures whether the model is
+        outputting a coherent next token.
         
         Args:
             logits (torch.Tensor): Model logits
             tokens (torch.Tensor): Input tokens
             
         Returns:
-            float: Probability of correct answer
+            float: Max logit value as proxy for model confidence
         """
         # Get logits for the last token position
         last_logits = logits[0, -1, :]
         
-        # Get probabilities
-        probs = torch.softmax(last_logits, dim=-1)
+        # Use the max logit as a general metric
+        # This captures model confidence in its top prediction
+        return last_logits.max().item()
+    
+    def create_number_comparison_metric(self, num1: int, num2: int) -> Callable:
+        """
+        Create a metric function that measures logit diff between two numbers.
         
-        # Return probability of "True" token (assuming that's what we want)
-        return probs[self.true_token_id].item()
+        Args:
+            num1: First number in comparison
+            num2: Second number in comparison
+            
+        Returns:
+            Metric function that returns logit(num1) - logit(num2)
+        """
+        # Get token IDs for the numbers
+        num1_token = self.model.to_tokens(str(num1), prepend_bos=False)[0, 0].item()
+        num2_token = self.model.to_tokens(str(num2), prepend_bos=False)[0, 0].item()
+        
+        def metric_fn(logits: torch.Tensor, tokens: torch.Tensor) -> float:
+            last_logits = logits[0, -1, :]
+            return (last_logits[num1_token] - last_logits[num2_token]).item()
+        
+        return metric_fn
     
     def _get_hook_names(self, component_types: List[str]) -> List[str]:
         """Get hook names for specified component types."""

@@ -37,9 +37,10 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 
-# Logging - only show on failure
+# Logging - suppress during tests
 log_cli = false
 log_cli_level = "CRITICAL"
+log_file = "tests/test.log"
 log_file_level = "INFO"
 
 # Output configuration
@@ -47,8 +48,7 @@ addopts = [
     "-v",
     "--tb=short",
     "--strict-markers",
-    "--disable-warnings",
-    "-p", "no:logging",  # Disable logging plugin output
+    "-p", "no:warnings",
 ]
 
 # Filter warnings

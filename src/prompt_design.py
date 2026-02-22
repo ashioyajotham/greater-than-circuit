@@ -67,13 +67,13 @@ class PromptGenerator:
             random.seed(seed)
             np.random.seed(seed)
         
-        # Template patterns for prompts
+        # Template patterns for prompts - using formats that work better for GPT-2
         self.prompt_templates = [
-            "{num1} > {num2}",
-            "Is {num1} greater than {num2}?",
-            "{num1} is greater than {num2}",
-            "The number {num1} is greater than {num2}",
-            "Compare: {num1} > {num2}",
+            "{num1} vs {num2}: the larger number is",
+            "Between {num1} and {num2}, the greater is",
+            "Which is bigger, {num1} or {num2}? The answer is",
+            "{num1} or {num2}? The larger one is",
+            "Of {num1} and {num2}, the larger number is",
         ]
         
         self.answer_options = ["True", "False"]
@@ -273,18 +273,22 @@ class PromptGenerator:
                 )
                 
             elif corruption_type == "swap_numbers":
-                # Swap the numbers
+                # Swap the numbers - extract template from clean prompt and re-apply
+                # Find and use the same template format
+                template = self.prompt_templates[0]  # Use default template
+                swapped_prompt = template.format(num1=example.num2, num2=example.num1)
+                
                 corrupted_example = PromptExample(
                     num1=example.num2,
                     num2=example.num1,
                     correct_answer=(example.num2 > example.num1),
-                    prompt_text=f"{example.num2} > {example.num1}",
+                    prompt_text=swapped_prompt,
                     answer_text="True" if (example.num2 > example.num1) else "False",
-                    is_corrupted=False  # This is consistent, so not corrupted
+                    is_corrupted=True  # Mark as corrupted since order matters
                 )
                 
             elif corruption_type == "random_numbers":
-                # Replace with random numbers
+                # Replace with random numbers using same template
                 num1 = self.rng.integers(1, 100)
                 num2 = self.rng.integers(1, 100)
                 while num1 == num2:
@@ -292,12 +296,13 @@ class PromptGenerator:
                 
                 correct_answer = num1 > num2
                 answer_text = "True" if correct_answer else "False"
+                template = self.prompt_templates[0]
                 
                 corrupted_example = PromptExample(
                     num1=num1,
                     num2=num2,
                     correct_answer=correct_answer,
-                    prompt_text=f"{num1} > {num2}",
+                    prompt_text=template.format(num1=num1, num2=num2),
                     answer_text=answer_text,
                     is_corrupted=False  # This is consistent, so not corrupted
                 )
@@ -313,7 +318,8 @@ class PromptGenerator:
     def create_prompt_pairs(
         self,
         n_pairs: int = 50,
-        num_range: Tuple[int, int] = (1, 50)
+        num_range: Tuple[int, int] = (1, 50),
+        corruption_type: str = "swap_numbers"
     ) -> List[Tuple[PromptExample, PromptExample]]:
         """
         Create pairs of clean and corrupted examples for activation patching.
@@ -321,6 +327,7 @@ class PromptGenerator:
         Args:
             n_pairs (int): Number of prompt pairs to create
             num_range (Tuple[int, int]): Range for random numbers
+            corruption_type (str): Type of corruption ('swap_numbers', 'flip_answer', 'random_numbers')
             
         Returns:
             List[Tuple[PromptExample, PromptExample]]: List of (clean, corrupted) pairs
@@ -328,8 +335,8 @@ class PromptGenerator:
         # Generate clean examples
         clean_examples = self.generate_basic_examples(n_pairs, num_range)
         
-        # Generate corrupted examples
-        corrupted_examples = self.generate_corrupted_examples(clean_examples)
+        # Generate corrupted examples with specified corruption type
+        corrupted_examples = self.generate_corrupted_examples(clean_examples, corruption_type=corruption_type)
         
         # Pair them up
         pairs = list(zip(clean_examples, corrupted_examples))

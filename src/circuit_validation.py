@@ -531,7 +531,7 @@ class CircuitValidator:
         report_text = "\n".join(report_lines)
         
         if save_path:
-            with open(save_path, 'w') as f:
+            with open(save_path, 'w', encoding='utf-8') as f:
                 f.write(report_text)
             logger.info(f"Validation report saved to {save_path}")
         

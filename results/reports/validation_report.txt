@@ -1,0 +1,52 @@
+================================================================================
+GREATER THAN CIRCUIT VALIDATION REPORT
+================================================================================
+
+Generated on: 2026-02-22 20:10:17
+
+OVERVIEW
+----------------------------------------
+Average Accuracy Across Tests: 0.515
+Minimum Accuracy: 0.400
+Maximum Accuracy: 0.645
+Standard Deviation: 0.101
+
+DETAILED RESULTS
+----------------------------------------
+
+TEST: BASELINE
+  Accuracy: 0.500
+  Examples: 10
+  Correct: 5
+  Precision: 0.500
+  Recall: 1.000
+  F1 Score: 0.667
+  Include Answer: True
+
+TEST: NECESSITY
+  Accuracy: 0.645
+  Examples: 10
+  Correct: 0
+  Baseline Accuracy: 0.5
+  Ablated Accuracy: 0.645333737386279
+  Necessity Score: -0.14533373738627897
+  N Components Ablated: 13
+
+TEST: ROBUSTNESS_EDGE_CASES
+  Accuracy: 0.400
+  Examples: 10
+  Correct: 4
+  Precision: 0.400
+  Recall: 1.000
+  F1 Score: 0.571
+  Include Answer: True
+  Baseline Accuracy: 0.5
+  Robustness Drop: 0.09999999999999998
+
+CONCLUSIONS
+----------------------------------------
+
+✗ Model shows weak baseline performance on greater than task
+! Circuit shows some sensitivity to perturbations
+
+================================================================================

@@ -62,6 +62,9 @@ class ModelSetup:
                 **kwargs
             )
             
+            # Enable attention result hooks for head-level patching
+            self.model.set_use_attn_result(True)
+            
             # Set model to evaluation mode
             self.model.eval()
             

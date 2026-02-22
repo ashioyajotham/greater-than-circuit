@@ -238,6 +238,17 @@ class CircuitAnalyzer:
         Returns:
             Dictionary containing circuit summary statistics
         """
+        # Handle empty components case
+        if not components:
+            return {
+                "total_components": 0,
+                "component_types": {},
+                "layer_distribution": {},
+                "total_importance": 0.0,
+                "average_importance": 0.0,
+                "most_important_component": None
+            }
+        
         # Count components by type
         type_counts = {}
         for comp in components.values():

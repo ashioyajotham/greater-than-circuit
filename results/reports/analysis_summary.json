@@ -1,0 +1,68 @@
+{
+  "baseline_accuracy": 0.5,
+  "n_components": 13,
+  "circuit_depth": 1,
+  "most_important_layer": 11,
+  "top_components": [
+    {
+      "name": "L11H0",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H1",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H2",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H3",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H4",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H5",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H6",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H7",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H8",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    },
+    {
+      "name": "L11H9",
+      "layer": 11,
+      "importance": 0.015973414361997087,
+      "type": "attention"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+num1,num2,correct_answer,prompt_text,answer_text
+1,0,True,1 vs 0: the larger number is,True
+0,1,False,0 vs 1: the larger number is,False
+10,9,True,10 vs 9: the larger number is,True
+9,10,False,9 vs 10: the larger number is,False
+100,1,True,100 vs 1: the larger number is,True
+1,100,False,1 vs 100: the larger number is,False
+50,50,False,50 vs 50: the larger number is,False
+0,0,False,0 vs 0: the larger number is,False
+99,100,False,99 vs 100: the larger number is,False
+100,99,True,100 vs 99: the larger number is,True

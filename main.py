@@ -113,9 +113,9 @@ def run_circuit_analysis(
         test_examples = generator.generate_balanced_dataset(n_examples=n_examples)
         edge_cases = generator.generate_edge_cases()
         
-        # Create prompt pairs for patching
+        # Create prompt pairs for patching - use swap_numbers for different clean/corrupted inputs
         n_pairs = 20 if quick_mode else 50
-        prompt_pairs = generator.create_prompt_pairs(n_pairs=n_pairs)
+        prompt_pairs = generator.create_prompt_pairs(n_pairs=n_pairs, corruption_type="swap_numbers")
         
         # Save examples
         generator.save_examples(test_examples, output_path / "data" / "test_examples.csv")
@@ -160,12 +160,20 @@ def run_circuit_analysis(
             corrupted_tokens = model.to_tokens(corrupted_example.prompt_text + " ")
             
             # Patch attention heads (most informative for this task)
-            pair_results = patcher.patch_attention_heads(
+            attn_results = patcher.patch_attention_heads(
                 corrupted_tokens=corrupted_tokens,
                 clean_tokens=clean_tokens,
                 positions=[-1]  # Focus on last position
             )
-            patching_results.extend(pair_results)
+            patching_results.extend(attn_results)
+            
+            # Patch MLP layers (critical for greater-than computation)
+            mlp_results = patcher.patch_mlp_layers(
+                corrupted_tokens=corrupted_tokens,
+                clean_tokens=clean_tokens,
+                positions=[-1]
+            )
+            patching_results.extend(mlp_results)
         
         patching_time = time.time() - start_time
         logger.info(f"Completed {len(patching_results)} patching experiments in {patching_time:.2f} seconds")
@@ -179,18 +187,19 @@ def run_circuit_analysis(
         # Identify circuit components
         circuit_components = analyzer.identify_circuit_components(
             patching_results,
-            importance_threshold=0.05,
-            top_k=20
+            importance_threshold=0.01,  # Lower threshold to capture more components
+            top_k=30
         )
         
         # Analyze layer contributions
         layer_contributions = analyzer.analyze_layer_contributions(patching_results)
         
         # Create comprehensive summary
-        circuit_summary = analyzer.create_circuit_summary(patching_results)
+        circuit_summary = analyzer.get_circuit_summary(circuit_components)
         
         analysis_time = time.time() - start_time
-        logger.info(f"Identified {len(circuit_components)} circuit components across {circuit_summary['circuit_depth']} layers in {analysis_time:.2f} seconds")
+        n_layers = len(circuit_summary.get('layer_distribution', {}))
+        logger.info(f"Identified {len(circuit_components)} circuit components across {n_layers} layers in {analysis_time:.2f} seconds")
         
         results['circuit_components'] = circuit_components
         results['layer_contributions'] = layer_contributions
@@ -264,8 +273,16 @@ def run_circuit_analysis(
         logger.info("=" * 60)
         logger.info(f"✓ Baseline Accuracy: {baseline_result.accuracy:.1%}")
         logger.info(f"✓ Circuit Components Identified: {len(circuit_components)}")
-        logger.info(f"✓ Circuit Depth: {circuit_summary['circuit_depth']} layers")
-        logger.info(f"✓ Most Important Layer: {circuit_summary['circuit_overview']['most_important_layer']}")
+        
+        # Calculate circuit depth from layer distribution
+        circuit_depth = len(circuit_summary.get('layer_distribution', {}))
+        most_important_layer = None
+        if circuit_summary.get('most_important_component'):
+            most_important_layer = circuit_summary['most_important_component'].get('layer')
+        
+        logger.info(f"✓ Circuit Depth: {circuit_depth} layers")
+        if most_important_layer is not None:
+            logger.info(f"✓ Most Important Layer: {most_important_layer}")
         
         # Top components
         logger.info("✓ Top Circuit Components:")
@@ -284,8 +301,8 @@ def run_circuit_analysis(
         summary_data = {
             'baseline_accuracy': baseline_result.accuracy,
             'n_components': len(circuit_components),
-            'circuit_depth': circuit_summary['circuit_depth'],
-            'most_important_layer': circuit_summary['circuit_overview']['most_important_layer'],
+            'circuit_depth': circuit_depth,
+            'most_important_layer': most_important_layer,
             'top_components': [
                 {
                     'name': name,
@@ -363,10 +380,10 @@ def main():
         print("📊 Check the generated plots and reports for detailed findings.")
         
     except KeyboardInterrupt:
-        print("\n⏹️  Analysis interrupted by user.")
+        print("\n[STOPPED] Analysis interrupted by user.")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Analysis failed: {e}")
+        print(f"\n[ERROR] Analysis failed: {e}")
         sys.exit(1)
 
 

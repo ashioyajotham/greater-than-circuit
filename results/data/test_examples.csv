@@ -1,0 +1,11 @@
+num1,num2,correct_answer,prompt_text,answer_text
+34,18,True,34 vs 18: the larger number is,True
+44,49,False,44 vs 49: the larger number is,False
+38,44,False,38 vs 44: the larger number is,False
+6,19,False,6 vs 19: the larger number is,False
+35,37,False,35 vs 37: the larger number is,False
+50,2,True,50 vs 2: the larger number is,True
+49,48,True,49 vs 48: the larger number is,True
+43,41,True,43 vs 41: the larger number is,True
+3,4,False,3 vs 4: the larger number is,False
+24,15,True,24 vs 15: the larger number is,True
